@@ -1,5 +1,8 @@
 import asyncio
 import nest_asyncio
+import os
+import aiohttp
+from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -7,9 +10,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
-import os
 
-# Aplicăm nest_asyncio pentru compatibilitate Render
+# Compatibilitate cu event loop Render
 nest_asyncio.apply()
 
 # Token Telegram din environment variable
@@ -19,15 +21,32 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 SCAN_INTERVAL = 10
 
 # ==========================
-# Funcție scanare tokeni
+# Funcție scanare tokeni PumpFun
 # ==========================
 async def scan_tokens(context: ContextTypes.DEFAULT_TYPE):
+    url = "https://pumpfun.com/new-tokens"  # înlocuiește cu pagina reală PumpFun
     try:
-        # Exemplu: trimitem mesaj în chat
-        await context.bot.send_message(chat_id=context.job.chat_id, text="Scanare tokeni... 🚀")
-        # TODO: aici integrează logica reală PumpFun + Solscan + filtre
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                html = await resp.text()
+                soup = BeautifulSoup(html, "html.parser")
+                tokens = soup.find_all("div", class_="token-card")  # selector fictiv
+
+                for token in tokens:
+                    name = token.find("span", class_="token-name").text
+                    supply = token.find("span", class_="token-supply").text
+                    social = token.find("a", class_="social-link")
+                    burn = token.find("span", class_="burned").text
+
+                    # Filtrare anti-scam
+                    if not social or int(burn.replace(",", "")) == 0:
+                        continue
+
+                    # Mesaj Telegram
+                    msg = f"🚀 {name} - Supply: {supply} - Burn: {burn}"
+                    await context.bot.send_message(chat_id=context.job.chat_id, text=msg)
     except Exception as e:
-        print(f"Error in scan_tokens: {e}")
+        print(f"Error scan_tokens: {e}")
 
 # ==========================
 # Comanda /start
@@ -47,7 +66,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # JobQueue este deja integrat în application
     job_queue = context.application.job_queue
 
     if query.data == 'start':
@@ -66,23 +84,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text="Auto-Scan oprit ⛔")
 
 # ==========================
-# Funcția principală async
+# Funcția principală
 # ==========================
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-    # Start JobQueue (integrat)
     app.job_queue.start()
-
-    # Handlere
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
-
-    # Pornim polling
     await app.run_polling()
 
 # ==========================
-# Compatibilitate Render / event loop existent
+# Compatibilitate Render
 # ==========================
 if __name__ == "__main__":
     try:
@@ -92,7 +104,6 @@ if __name__ == "__main__":
 
     if loop and loop.is_running():
         asyncio.create_task(main())
-        # Menține scriptul activ
         import time
         while True:
             time.sleep(1)
