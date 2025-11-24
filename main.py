@@ -11,20 +11,37 @@ from telegram.ext import (
     ContextTypes
 )
 
-# Compatibilitate cu event loop Render
 nest_asyncio.apply()
 
-# Token Telegram din environment variable
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+SOLSCAN_API = os.environ.get("SOLSCAN_API")  # cheie API Solscan dacă ai
 
-# Interval scanare (secunde)
-SCAN_INTERVAL = 10
+SCAN_INTERVAL = 10  # secunde
+
+# ==========================
+# Funcție verificare token Solscan
+# ==========================
+async def check_token_solscan(token_address):
+    if not SOLSCAN_API:
+        return True  # Dacă nu ai API, skip verificare
+    url = f"https://api.solscan.io/account/tokens?address={token_address}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                data = await resp.json()
+                # Exemplu de verificare: minim 1 holder + lichiditate > 0
+                for t in data.get("tokens", []):
+                    if int(t.get("amount", 0)) > 0:
+                        return True
+    except Exception as e:
+        print(f"Solscan error: {e}")
+    return False
 
 # ==========================
 # Funcție scanare tokeni PumpFun
 # ==========================
 async def scan_tokens(context: ContextTypes.DEFAULT_TYPE):
-    url = "https://pumpfun.com/new-tokens"  # înlocuiește cu pagina reală PumpFun
+    url = "https://pumpfun.com/new-tokens"  # înlocuiește cu pagina reală
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -37,12 +54,17 @@ async def scan_tokens(context: ContextTypes.DEFAULT_TYPE):
                     supply = token.find("span", class_="token-supply").text
                     social = token.find("a", class_="social-link")
                     burn = token.find("span", class_="burned").text
+                    contract = token.get("data-contract")  # trebuie să fie disponibil
 
                     # Filtrare anti-scam
                     if not social or int(burn.replace(",", "")) == 0:
                         continue
 
-                    # Mesaj Telegram
+                    # Verificare Solscan
+                    valid = await check_token_solscan(contract)
+                    if not valid:
+                        continue
+
                     msg = f"🚀 {name} - Supply: {supply} - Burn: {burn}"
                     await context.bot.send_message(chat_id=context.job.chat_id, text=msg)
     except Exception as e:
