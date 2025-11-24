@@ -2,7 +2,9 @@ import asyncio
 import nest_asyncio
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+)
 
 # Aplicăm nest_asyncio pentru compatibilitate Render
 nest_asyncio.apply()
@@ -13,13 +15,20 @@ TELEGRAM_TOKEN = "8311905393:AAFBQ7FDj5rzn5Wo3fVazWomXMM3xklHh3E"
 # Interval scanare (secunde)
 SCAN_INTERVAL = 10
 
-# Funcție scanare tokeni (placeholder pentru logica reală)
+# ==========================
+# Funcție scanare tokeni
+# ==========================
 async def scan_tokens(context: ContextTypes.DEFAULT_TYPE):
-    # Aici adaugi logica ta reală PumpFun + Solscan
-    # Exemplu simplu de mesaj
-    await context.bot.send_message(chat_id=context.job.chat_id, text="Scanare tokeni... 🚀")
+    try:
+        # Exemplu: trimitem mesaj în chat
+        await context.bot.send_message(chat_id=context.job.chat_id, text="Scanare tokeni... 🚀")
+        # TODO: aici integrează logica reală PumpFun + Solscan + filtre
+    except Exception as e:
+        print(f"Error in scan_tokens: {e}")
 
+# ==========================
 # Comanda /start
+# ==========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("▶ Start Auto-Scan", callback_data='start')],
@@ -28,13 +37,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Bun venit! Alege opțiunea:', reply_markup=reply_markup)
 
-# Callback butoane
+# ==========================
+# Butoane meniu
+# ==========================
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # Asigură-te că job_queue există
+    if context.job_queue is None:
+        context.job_queue = context.application.create_job_queue()
+        context.job_queue.start()
+
     if query.data == 'start':
         # Pornim scanarea periodică
-        context.job_queue.run_repeating(scan_tokens, interval=SCAN_INTERVAL, first=0, chat_id=query.message.chat_id, name=str(query.message.chat_id))
+        context.job_queue.run_repeating(
+            scan_tokens,
+            interval=SCAN_INTERVAL,
+            first=0,
+            chat_id=query.message.chat_id,
+            name=str(query.message.chat_id)
+        )
         await query.edit_message_text(text="Auto-Scan pornit ✅")
     elif query.data == 'stop':
         # Oprim scanarea
@@ -43,17 +66,22 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             job.schedule_removal()
         await query.edit_message_text(text="Auto-Scan oprit ⛔")
 
+# ==========================
 # Funcția principală async
+# ==========================
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # Handlere
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
 
     # Pornim polling
     await app.run_polling()
 
-# Compatibilitate cu Render / event loop deja existent
+# ==========================
+# Compatibilitate Render / event loop existent
+# ==========================
 if __name__ == "__main__":
     try:
         loop = asyncio.get_running_loop()
