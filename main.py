@@ -7,12 +7,13 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
+import os
 
 # Aplicăm nest_asyncio pentru compatibilitate Render
 nest_asyncio.apply()
 
-# Token Telegram
-TELEGRAM_TOKEN = "8311905393:AAFBQ7FDj5rzn5Wo3fVazWomXMM3xklHh3E"
+# Token Telegram din environment variable
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 # Interval scanare (secunde)
 SCAN_INTERVAL = 10
