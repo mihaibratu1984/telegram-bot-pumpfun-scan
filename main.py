@@ -164,4 +164,18 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+
+if __name__ == "__main__":
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # Nu există loop
+        loop = None
+
+    if loop and loop.is_running():
+        # Dacă loop-ul deja rulează, creăm task
+        import nest_asyncio
+        nest_asyncio.apply()  # Permite rularea reentrantă
+        asyncio.create_task(main())
+    else:
+        asyncio.run(main())
+
