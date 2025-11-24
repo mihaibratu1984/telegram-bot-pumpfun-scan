@@ -11,25 +11,25 @@ from telegram.ext import (
     ContextTypes
 )
 
+# Compatibilitate Render / asyncio
 nest_asyncio.apply()
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-SOLSCAN_API = os.environ.get("SOLSCAN_API")  # cheie API Solscan dacă ai
+SOLSCAN_API = os.environ.get("SOLSCAN_API")  # opțional
 
 SCAN_INTERVAL = 10  # secunde
 
 # ==========================
-# Funcție verificare token Solscan
+# Verificare token pe Solscan (optional)
 # ==========================
 async def check_token_solscan(token_address):
     if not SOLSCAN_API:
-        return True  # Dacă nu ai API, skip verificare
+        return True
     url = f"https://api.solscan.io/account/tokens?address={token_address}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 data = await resp.json()
-                # Exemplu de verificare: minim 1 holder + lichiditate > 0
                 for t in data.get("tokens", []):
                     if int(t.get("amount", 0)) > 0:
                         return True
@@ -38,7 +38,7 @@ async def check_token_solscan(token_address):
     return False
 
 # ==========================
-# Funcție scanare tokeni PumpFun
+# Scanare tokeni PumpFun
 # ==========================
 async def scan_tokens(context: ContextTypes.DEFAULT_TYPE):
     url = "https://pumpfun.com/new-tokens"  # înlocuiește cu pagina reală
@@ -54,13 +54,12 @@ async def scan_tokens(context: ContextTypes.DEFAULT_TYPE):
                     supply = token.find("span", class_="token-supply").text
                     social = token.find("a", class_="social-link")
                     burn = token.find("span", class_="burned").text
-                    contract = token.get("data-contract")  # trebuie să fie disponibil
+                    contract = token.get("data-contract")
 
                     # Filtrare anti-scam
                     if not social or int(burn.replace(",", "")) == 0:
                         continue
 
-                    # Verificare Solscan
                     valid = await check_token_solscan(contract)
                     if not valid:
                         continue
@@ -91,6 +90,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     job_queue = context.application.job_queue
 
     if query.data == 'start':
+        # șterge job-uri vechi înainte de a crea altele noi
+        for job in job_queue.get_jobs_by_name(str(query.message.chat_id)):
+            job.schedule_removal()
+
         job_queue.run_repeating(
             scan_tokens,
             interval=SCAN_INTERVAL,
@@ -99,9 +102,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name=str(query.message.chat_id)
         )
         await query.edit_message_text(text="Auto-Scan pornit ✅")
+
     elif query.data == 'stop':
-        jobs = job_queue.get_jobs_by_name(str(query.message.chat_id))
-        for job in jobs:
+        for job in job_queue.get_jobs_by_name(str(query.message.chat_id)):
             job.schedule_removal()
         await query.edit_message_text(text="Auto-Scan oprit ⛔")
 
@@ -113,6 +116,7 @@ async def main():
     app.job_queue.start()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
+    # Run polling doar o dată, fără conflict
     await app.run_polling()
 
 # ==========================
