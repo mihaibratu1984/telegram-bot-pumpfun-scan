@@ -1,9 +1,11 @@
 import asyncio
 import nest_asyncio
-import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes
 )
 
 # Aplicăm nest_asyncio pentru compatibilitate Render
@@ -44,14 +46,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Asigură-te că job_queue există
-    if context.job_queue is None:
-        context.job_queue = context.application.create_job_queue()
-        context.job_queue.start()
+    # JobQueue este deja integrat în application
+    job_queue = context.application.job_queue
 
     if query.data == 'start':
-        # Pornim scanarea periodică
-        context.job_queue.run_repeating(
+        job_queue.run_repeating(
             scan_tokens,
             interval=SCAN_INTERVAL,
             first=0,
@@ -60,8 +59,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(text="Auto-Scan pornit ✅")
     elif query.data == 'stop':
-        # Oprim scanarea
-        jobs = context.job_queue.get_jobs_by_name(str(query.message.chat_id))
+        jobs = job_queue.get_jobs_by_name(str(query.message.chat_id))
         for job in jobs:
             job.schedule_removal()
         await query.edit_message_text(text="Auto-Scan oprit ⛔")
@@ -71,6 +69,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==========================
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    # Start JobQueue (integrat)
+    app.job_queue.start()
 
     # Handlere
     app.add_handler(CommandHandler("start", start))
